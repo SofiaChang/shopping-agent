@@ -10,6 +10,7 @@ This project implements an Amazon Shopping Assistant that parses user queries (e
 5. [Usage](#usage)
 6. [Features & Capabilities](#features--capabilities)
 7. [Known Limitations & Future Improvements](#known-limitations--future-improvements)
+8. [Critical Design Choices](#critical-design-choices)
 
 ## Overview
 
@@ -133,3 +134,67 @@ shopping-agent/
 - [ ] User preferences and saved searches
 - [ ] Mobile-responsive design improvements
 - [ ] Integration with Amazon API (if available)
+
+## Critical Design Choices
+
+### Architecture
+- **Modular Design**: The system is split into distinct components (parser, scraper, agent) for better maintainability and testing
+- **Type Safety**: Uses TypedDict for data structures to ensure type consistency across components
+- **Separation of Concerns**: Clear boundaries between web scraping, parsing, and business logic
+
+### Query Parsing Strategy
+- **Incremental Parsing**: Supports partial refinements by maintaining existing constraints
+- **Constraint Merging**: New constraints are merged with existing ones, with more restrictive values taking precedence
+- **Natural Language Patterns**: Uses regex patterns to identify common shopping-related phrases
+- **Context Preservation**: Maintains category context between queries unless explicitly changed
+
+### Product Ranking & Filtering
+- **Two-Stage Process**: 
+  1. Strict filtering based on hard constraints (price, prime, etc.)
+  2. Ranking of remaining products based on ratings and review counts
+- **Priority Order**:
+  Products are ranked using a tuple-based sorting approach where criteria are evaluated in strict priority order:
+  1. Rating (highest first): Primary factor for quality assessment
+  2. Review Count (most reviews first): Secondary factor indicating product popularity and reliability
+  3. Price (lowest first): Tertiary factor for cost-effectiveness
+  4. Prime Status (Prime products first): Final tiebreaker when other factors are equal
+  
+  This approach ensures that:
+  - High-quality products (good ratings) are always prioritized
+  - Well-reviewed products are preferred over those with few reviews
+  - Price becomes a factor only when ratings and reviews are comparable
+  - Prime status serves as a final differentiator
+- **Flexible Matching**: Products that don't meet all constraints are shown as "other suggestions"
+
+### Web Scraping Approach
+- **Anti-Detection Measures**:
+  - User agent rotation
+  - Random delays (2-6 seconds)
+  - Rate limiting (20 requests/minute)
+  - WebDriver fingerprint masking
+- **Robust Extraction**:
+  - Safe element extraction with fallbacks
+  - Graceful handling of missing data
+  - Comprehensive error logging
+
+### State Management
+- **Session-Based**: Uses Streamlit's session state for conversation history
+- **Constraint Persistence**: Maintains constraints between queries for natural refinement
+- **Clean Reset**: "New Search" feature completely resets the conversation state
+
+### Error Handling
+- **Graceful Degradation**: Continues operation even if some products fail to parse
+- **Informative Messages**: Clear error messages for rate limits and timeouts
+- **Logging**: Comprehensive logging at different severity levels
+
+### Interface Design
+- **Responsive Layout**: Two-column design for product display
+- **Progressive Disclosure**: Shows essential info first, details on demand
+- **Visual Hierarchy**: Clear distinction between matching products and suggestions to products that didn't fully meet the constraints, giving users more options
+- **Interactive Elements**: Clickable product links and thumbnails
+
+These design choices were made to balance:
+- User experience vs. technical complexity
+- Scraping efficiency vs. detection avoidance
+- Strict filtering vs. flexible suggestions
+- Immediate results vs. comprehensive data
