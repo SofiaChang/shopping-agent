@@ -17,27 +17,27 @@ from webdriver_manager.chrome import ChromeDriverManager
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-UA_POOL = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+USER_AGENTS = [
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/120.0",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15"
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 ]
 
 class Scraper:
-    def __init__(self, headless: bool = True):
+    def __init__(self, headless: bool = False):
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(logging.INFO)
+        
+        self.current_user_agent = random.choice(USER_AGENTS)
+        self.logger.info(f"Initializing scraper with user agent: {self.current_user_agent}")
         
         self.driver = self._create_driver(headless)
         self.raw_html = ""
         self.parsed_products: List[Product] = []
         self.last_request_time = 0
         self.requests_per_minute = 15
-        self.min_delay = 2  
-        self.max_delay = 6
+        self.min_delay = 3
+        self.max_delay = 7
 
 
     def _create_driver(self, headless: bool) -> webdriver.Chrome:
@@ -46,11 +46,10 @@ class Scraper:
             if headless:
                 options.add_argument("--headless")
             
-            user_agent = random.choice(UA_POOL)
-            options.add_argument(f"--user-agent={user_agent}")    
+            options.add_argument(f"--user-agent={self.current_user_agent}")
+            options.add_argument("--disable-blink-features=AutomationControlled")
             options.add_argument('--no-sandbox')
             options.add_argument('--disable-dev-shm-usage')
-            options.add_argument("--disable-blink-features=AutomationControlled")
             
             service = Service(ChromeDriverManager().install())
             driver = webdriver.Chrome(service=service, options=options)
@@ -67,6 +66,14 @@ class Scraper:
         except Exception as e:
             self.logger.error(f"Error creating WebDriver: {str(e)}")
             raise
+
+
+    def _rotate_user_agent(self):
+        new_user_agent = random.choice([ua for ua in USER_AGENTS if ua != self.current_user_agent])
+        self.current_user_agent = new_user_agent
+        self.logger.info(f"Rotating to new user agent: {self.current_user_agent}")
+        
+        self.driver.execute_cdp_cmd('Network.setUserAgentOverride', {"userAgent": self.current_user_agent})
 
 
     def _enforce_rate_limit(self):
@@ -90,53 +97,104 @@ class Scraper:
 
 
     def search_and_scrape(self, search_term: str, constraints: Constraints = None, results_to_fetch: int = 5, base_url: str = "https://www.amazon.com") -> List[Product]:
-        try:
-            self._enforce_rate_limit()            
-            search_url = f"{base_url}/s?k={search_term.replace(' ', '+')}"
-            
-            if constraints:
-                if constraints.get('min_price') is not None:
-                    search_url += f"&rh=p_36%3A{int(constraints['min_price'] * 100)}-"
-                if constraints.get('max_price') is not None:
-                    if constraints.get('min_price') is None:
-                        search_url += "&rh=p_36%3A-"
-                    search_url += f"{int(constraints['max_price'] * 100)}"
-                if constraints.get('prime_required'):
-                    search_url += "&rh=p_85%3A2470955011"
-            
-            logger.info(f"Navigating to {search_url}")
-            self.driver.get(search_url)
-            self._random_delay()
-            
-            WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located(
-                    (By.XPATH, "//div[@data-component-type='s-search-result']")
-                )
-            )
-            
-            self.raw_html = self.driver.page_source
-            self._extract_products(results_to_fetch)
-            
-            return self.parsed_products
-            
-        except TimeoutException:
-            logger.error("Timeout waiting for search results")
-            raise Exception("Search timed out. Please try again later.")
-        except Exception as e:
-            logger.error(f"Error during search and scrape: {str(e)}")
-            raise
+        max_retries = 3
+        retry_delay = 5
+        
+        for attempt in range(max_retries):
+            try:
+                if attempt > 0:
+                    self._rotate_user_agent()
+                
+                self._enforce_rate_limit()
+                
+                search_url = f"{base_url}/s?k={search_term.replace(' ', '+')}"
+                logger.info(f"Searching Amazon for: {search_term} (attempt {attempt + 1}/{max_retries})")
+                logger.info(f"Using URL: {search_url}")
+                logger.info(f"Using user agent: {self.current_user_agent}")
+                
+                logger.info("Navigating to search page...")
+                self.driver.get(search_url)
+                logger.info("Page navigation complete, adding random delay...")
+                self._random_delay()
+                
+                try:
+                    logger.info("Waiting for page to be fully loaded...")
+                    WebDriverWait(self.driver, 20).until(
+                        lambda driver: driver.execute_script("return document.readyState") == "complete"
+                    )
+                    logger.info("Page loaded successfully")
+                    
+                    logger.info("Waiting for search results or no results message...")
+                    WebDriverWait(self.driver, 20).until(
+                        lambda driver: (
+                            len(driver.find_elements(By.XPATH, "//div[@data-component-type='s-search-result']")) > 0 or
+                            len(driver.find_elements(By.XPATH, "//div[contains(text(), 'No results for')]")) > 0
+                        )
+                    )
+                    logger.info("Search results or no results message found")
+                    
+                    no_results = self.driver.find_elements(By.XPATH, "//div[contains(text(), 'No results for')]")
+                    if no_results:
+                        logger.info("No results found for search term")
+                        return []
+                    
+                    logger.info("Waiting for product prices to load...")
+                    WebDriverWait(self.driver, 20).until(
+                        EC.presence_of_element_located((By.XPATH, "//div[@data-component-type='s-search-result']//span[@class='a-price']"))
+                    )
+                    logger.info("Product prices loaded successfully")
+                    
+                except TimeoutException as e:
+                    logger.warning(f"Timeout waiting for page elements (attempt {attempt + 1}): {str(e)}")
+                    logger.warning(f"Current URL: {self.driver.current_url}")
+                    logger.warning(f"Page source length: {len(self.driver.page_source)}")
+                    if attempt < max_retries - 1:
+                        logger.info(f"Retrying in {retry_delay} seconds...")
+                        time.sleep(retry_delay)
+                        continue
+                    raise Exception("Search timed out. Please try again later.")
+                
+                logger.info(f"Extracting up to {results_to_fetch} products...")
+                products = self._extract_products(results_to_fetch)
+                
+                if not products:
+                    logger.warning("No products extracted from search results")
+                    logger.warning(f"Number of product containers found: {len(self.driver.find_elements(By.XPATH, '//div[@data-component-type="s-search-result"]'))}")
+                    if attempt < max_retries - 1:
+                        logger.info(f"Retrying in {retry_delay} seconds...")
+                        time.sleep(retry_delay)
+                        continue
+                    return []
+                
+                logger.info(f"Successfully extracted {len(products)} products")
+                return products
+                
+            except Exception as e:
+                logger.error(f"Error during search (attempt {attempt + 1}): {str(e)}")
+                logger.error(f"Current URL: {self.driver.current_url}")
+                logger.error(f"Page source length: {len(self.driver.page_source)}")
+                if attempt < max_retries - 1:
+                    logger.info(f"Retrying in {retry_delay} seconds...")
+                    time.sleep(retry_delay)
+                    continue
+                raise Exception(f"Search failed after {max_retries} attempts. Please try again later.")
+        
+        return []
 
 
-    def _extract_products(self, results_to_fetch: int) -> None:
+    def _extract_products(self, results_to_fetch: int) -> List[Product]:
         try:
+            logger.info("Finding product containers...")
             product_containers = self.driver.find_elements(
                 By.XPATH, 
                 "//div[@data-component-type='s-search-result']"
             )[:results_to_fetch]
+            logger.info(f"Found {len(product_containers)} product containers")
             
             self.parsed_products = []
-            for container in product_containers:
+            for i, container in enumerate(product_containers, 1):
                 try:
+                    logger.info(f"Processing product {i}/{len(product_containers)}")
                     product_data: Product = {
                         'title': self._extract_text(container, ".//h2//span"),
                         'price': self._extract_price(container),
@@ -149,10 +207,16 @@ class Scraper:
                     
                     if product_data['title']:
                         self.parsed_products.append(product_data)
+                        logger.info(f"Successfully extracted product: {product_data['title']}")
+                    else:
+                        logger.warning(f"Product {i} has no title, skipping")
                     
                 except Exception as e:
-                    logger.warning(f"Error extracting product: {str(e)}")
+                    logger.warning(f"Error extracting product {i}: {str(e)}")
                     continue
+                    
+            logger.info(f"Successfully processed {len(self.parsed_products)} products")
+            return self.parsed_products
                     
         except Exception as e:
             logger.error(f"Error in product extraction: {str(e)}")
