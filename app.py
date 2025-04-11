@@ -88,7 +88,12 @@ def main():
                             else:
                                 st.subheader(product["title"])
                             
-                            st.write(f"Price: ${product['price']:.2f}")
+                            st.write(f"Price: ${product['price']:.2f}" if product['price'] is not None else "Price: Not available")
+                            st.write(f"Rating: {product['rating']} ⭐" if product['rating'] is not None else "Rating: Not available")
+                            st.write(f"Reviews: {product['review_count']:,}") if product['review_count'] is not None else "Reviews: Not available"
+                            prime_status = "✅" if product.get('prime') else "❌"
+                            st.write(f"Prime: {prime_status}")
+
                             if 'filter_reasons' in product:
                                 st.write("Didn't fully meet constraints:")
                                 for reason in product['filter_reasons']:

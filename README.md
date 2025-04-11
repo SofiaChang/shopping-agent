@@ -17,12 +17,16 @@ This project implements an Amazon Shopping Assistant that parses user queries (e
 The Amazon Shopping Assistant is a Python-based application that helps users find products on Amazon based on natural language queries. It uses a combination of natural language processing, web scraping, and constraint-based filtering to provide relevant product recommendations.
 
 Key features include:
-- Natural language query parsing
+- Natural language query parsing powered by Gemini 1.5 Pro
 - Multi-turn conversation support
 - Partial query refinements
 - Product filtering and ranking
 - Anti-detection measures for web scraping
 - User-friendly web interface
+
+The assistant uses an LLM to parse user queries into structured shopping constraints. It supports follow-up questions and partial refinements by maintaining conversational context and updating filters intelligently.
+
+The current LLM powering this system is **Gemini 1.5 Pro**, chosen for its excellent performance on natural language tasks and large context window. Gemini 1.5 Pro offers a strong balance between reasoning, flexibility, and free-tier accessibility — ideal for prototyping shopping agents with multi-turn dialogue.
 
 ## Project Structure
 
@@ -30,9 +34,10 @@ Key features include:
 shopping-agent/
 ├── agent/
 │   ├── __init__.py
-│   ├── parser.py          # Query parsing and constraint extraction
+│   ├── parser.py          # (Deprecated) Legacy query parsing
 │   ├── scraper.py         # Amazon product scraping
-│   └── shopping_agent.py  # Main agent logic
+│   ├── shopping_agent.py  # Main agent logic
+│   └── llm.py            # LLM integration with Gemini 1.5 Pro
 ├── utils.py               # Shared types and utilities
 ├── main.py                # To run independently of web interface
 ├── app.py                 # Streamlit web interface
@@ -75,6 +80,18 @@ shopping-agent/
    pip install webdriver-manager
    ```
 
+5. Set up Gemini 1.5 Pro:
+   - Create a Google Cloud project and enable the Gemini API
+   - Generate an API key from the Google Cloud Console
+   - Set the API key as an environment variable:
+     ```bash
+     export GOOGLE_API_KEY="your-api-key-here"
+     ```
+     Or create a `.env` file in the project root:
+     ```
+     GOOGLE_API_KEY=your-api-key-here
+     ```
+
 ## Usage
 
 1. Start the application:
@@ -91,9 +108,11 @@ shopping-agent/
 ## Features & Capabilities
 
 ### Query Parsing
+- Powered by Gemini 1.5 Pro for natural language understanding
 - Extracts product categories, price ranges, and other constraints
 - Supports partial refinements (e.g., "under $50 now", "make it prime")
 - Maintains context between queries
+- Handles complex multi-turn conversations
 
 ### Product Scraping
 - Extracts product details including:
@@ -138,9 +157,16 @@ shopping-agent/
 ## Critical Design Choices
 
 ### Architecture
-- **Modular Design**: The system is split into distinct components (parser, scraper, agent) for better maintainability and testing
+- **Modular Design**: The system is split into distinct components (scraper, agent, llm) for better maintainability and testing
 - **Type Safety**: Uses TypedDict for data structures to ensure type consistency across components
-- **Separation of Concerns**: Clear boundaries between web scraping, parsing, and business logic
+- **Separation of Concerns**: Clear boundaries between web scraping, LLM integration, and business logic
+
+### LLM Integration
+- **Gemini 1.5 Pro**: Chosen for its strong natural language understanding and large context window
+- **Context Management**: Maintains conversation history and constraint context between queries
+- **Flexible Parsing**: Handles both initial queries and follow-up refinements
+- **Structured Output**: Converts natural language into consistent constraint format
+- **Replacement Strategy**: Successfully replaced the legacy regex-based parser with more flexible LLM-based parsing
 
 ### Query Parsing Strategy
 - **Incremental Parsing**: Supports partial refinements by maintaining existing constraints

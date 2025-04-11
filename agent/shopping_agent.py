@@ -1,8 +1,9 @@
 import logging
-from typing import List, Dict, Optional
-from .parser import Parser
+from typing import List
 from .scraper import Scraper
 from .utils import Product, Constraints, SearchResults, QueryError
+from .llm import LLM
+import json
 
 
 class ShoppingAgent:
@@ -10,7 +11,7 @@ class ShoppingAgent:
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(log_level)
         
-        self.parser = Parser()
+        self.llm = LLM()
         self.scraper = None
         
         self.constraints: Constraints = {
@@ -123,18 +124,19 @@ class ShoppingAgent:
         self.logger.info(f"Handling request: {user_input}")
         
         try:
-            new_constraints = self.parser.parse(user_input, self.constraints)
-            self.logger.info(f"Parsed constraints: {new_constraints}")
+            response = json.loads(self.llm.send_message(user_input))
+            print("===Sofia Response: ", response)
+            self.constraints = response['constraints']
+            self.logger.info(f"Parsed constraints: {self.constraints}")
             
-            self._merge_constraints(new_constraints)
-            self._initialize_scraper(headless)            
             matching_products, other_products = self._filter_products(
                 self.current_products, 
                 self.constraints
             )
             
-            if len(matching_products) < 3:
-                self.logger.info("Fewer than 3 matches, performing new scrape")
+            if len(matching_products) < 3 or response['trigger_new_scrape']:
+                self.logger.info("Performing new scrape")
+                self._initialize_scraper(headless)            
                 self.current_products = self.scraper.search_and_scrape(
                     self.constraints["category"],
                     self.constraints,
@@ -145,7 +147,7 @@ class ShoppingAgent:
                     self.constraints
                 )
             ranked_products = self._rank_products(matching_products)
-            
+
             if self.history is not None:
                 self.history.append({
                     "input": user_input,

@@ -36,8 +36,8 @@ class Scraper:
         self.parsed_products: List[Product] = []
         self.last_request_time = 0
         self.requests_per_minute = 15
-        self.min_delay = 3
-        self.max_delay = 7
+        self.min_delay = 2
+        self.max_delay = 5
 
 
     def _create_driver(self, headless: bool) -> webdriver.Chrome:
@@ -62,6 +62,7 @@ class Scraper:
                 """
             })
             
+            self.logger.info("WebDriver created successfully")
             return driver
         except Exception as e:
             self.logger.error(f"Error creating WebDriver: {str(e)}")
@@ -119,13 +120,13 @@ class Scraper:
                 
                 try:
                     logger.info("Waiting for page to be fully loaded...")
-                    WebDriverWait(self.driver, 20).until(
+                    WebDriverWait(self.driver, 5).until(
                         lambda driver: driver.execute_script("return document.readyState") == "complete"
                     )
                     logger.info("Page loaded successfully")
                     
                     logger.info("Waiting for search results or no results message...")
-                    WebDriverWait(self.driver, 20).until(
+                    WebDriverWait(self.driver, 5).until(
                         lambda driver: (
                             len(driver.find_elements(By.XPATH, "//div[@data-component-type='s-search-result']")) > 0 or
                             len(driver.find_elements(By.XPATH, "//div[contains(text(), 'No results for')]")) > 0
@@ -139,7 +140,7 @@ class Scraper:
                         return []
                     
                     logger.info("Waiting for product prices to load...")
-                    WebDriverWait(self.driver, 20).until(
+                    WebDriverWait(self.driver, 5).until(
                         EC.presence_of_element_located((By.XPATH, "//div[@data-component-type='s-search-result']//span[@class='a-price']"))
                     )
                     logger.info("Product prices loaded successfully")
